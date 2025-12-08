@@ -1,0 +1,10 @@
+version: "3.8"
+
+services:
+  bot:
+    build: .
+    env_file:
+      - .env
+    restart: unless-stopped
+    # Не монтируем тома: бот не хранит файлы на диске
+    # При необходимости можно пробросить прокси/сеть
