@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 from app.processing.parser import parse_telegram_export_streams
 from app.processing.extractor import extract_entities
 from app.processing.excel import build_excel_workbook
+from app.processing.utils import is_valid
 from app.utils.temp import SessionAccumulator, InMemoryFile
 
 load_dotenv()
@@ -66,7 +67,7 @@ async def handle_document(message: Message):
     # Скачиваем файл в память
     file = await bot.get_file(doc.file_id)
     file_bytes = await bot.download_file(file.file_path)
-    data = await file_bytes.read()
+    data = file_bytes.read()
 
     user_id = message.from_user.id if message.from_user else message.chat.id
 
@@ -109,13 +110,15 @@ async def cmd_process(message: Message):
     # Решение по отправке
     if len(participants) < 50:
         # Список в чат
-        usernames = sorted({p.get("username") for p in participants if p.get("username")})
+        usernames = sorted({p.get("username") for p in mentions if p.get("username") and is_valid(p.get("username"))})
+        names = sorted({p.get("name") for p in participants if p.get("name")})
         if not usernames:
             await message.answer("Не удалось извлечь ни одного username из участников.")
         else:
             # Отправляем компактный список
             chunk = "\n".join(f"@{u}" if not u.startswith("@") else u for u in usernames)
-            await message.answer("Участники (<50):\n" + chunk)
+            nam_chunk = "\n".join(f"{u}" if not u.startswith("@") else u for u in names)
+            await message.answer("Участники (<50):\nУпомянутые пользователи:\n" + chunk + "\nУчастники чата:\n" + nam_chunk)
     else:
         # Excel
         try:

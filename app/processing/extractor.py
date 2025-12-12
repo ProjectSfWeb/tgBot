@@ -15,68 +15,54 @@ def _is_deleted_account(name: str | None, username: str | None) -> bool:
 def extract_entities(parsed: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]:
     """
     Извлекает:
-    - participants: авторы сообщений (уникальные по username/имени)
+    - participants: авторы сообщений (уникальные по имени, т.к. username в экспорте отсутствует)
     - mentions: упомянутые @username
-    - channels: сообщения, помеченные каналами
-
-    Нормализует и убирает дубликаты/удалённые.
+    - channels: каналы (определяются по is_channel)
     """
+
     messages = parsed.get("messages", [])
+
     participants_map: Dict[str, Dict[str, Any]] = {}
-    participants_no_username: List[Dict[str, Any]] = []
-    mentions_set: Set[str] = set()
     channels_map: Dict[str, Dict[str, Any]] = {}
+    mentions_set: Set[str] = set()
 
     for m in messages:
         frm = m.get("from") or {}
-        name = (frm.get("name") or "") or None
-        username = frm.get("username") or None
-        is_channel = bool(frm.get("is_channel"))
+        name = frm.get("name") or None
+        username = frm.get("username")  # всегда None, оставим для совместимости
+        is_channel = frm.get("is_channel", False)
 
-        # Каналы
+        # ---- КАНАЛЫ ----
         if is_channel:
-            key = username or name or "channel_unknown"
+            key = username or name or "unknown_channel"
             if key not in channels_map:
-                channels_map[key] = {"name": name, "username": username}
+                channels_map[key] = {
+                    "name": name,
+                    "username": username
+                }
 
-        # Участники
-        if not _is_deleted_account(name, username):
-            if username:
-                if username not in participants_map:
-                    participants_map[username] = {
-                        "name": name,
-                        "username": username,
-                        "bio": None,  # Можем заполнить, если доступно из JSON (в некоторых экспортных форматах)
-                        "registered_at": None,
-                        "has_channel": is_channel,
-                    }
-                else:
-                    # Обновим флаги при необходимости
-                    participants_map[username]["has_channel"] = participants_map[username]["has_channel"] or is_channel
+        # ---- УЧАСТНИКИ ----
+        # В Telegram Desktop username отсутствует, поэтому различаем по имени
+        if name:
+            if name not in participants_map:
+                participants_map[name] = {
+                    "name": name,
+                    "username": username,   # всегда None, но пусть поле будет
+                    "has_channel": is_channel,
+                }
             else:
-                # Без username — учтём по имени (может дублироваться, поэтому не включаем в конечный список username)
-                # Можно опционально вести учёт name-only
-                participants_no_username.append(
-                    {
-                        "name": name,
-                        "username": None,
-                        "bio": None,
-                        "registered_at": None,
-                        "has_channel": is_channel,
-                    }
+                # обновляем флаг: если хоть раз писал как канал
+                participants_map[name]["has_channel"] = (
+                    participants_map[name]["has_channel"] or is_channel
                 )
 
-        # Упоминания
+        # ---- УПОМИНАНИЯ ----
         for u in m.get("mentions", []):
             if u:
                 mentions_set.add(u)
 
-    participants = list(participants_map.values())
-    mentions = [{"username": u} for u in sorted(list(mentions_set))]
-    channels = list(channels_map.values())
-
     return {
-        "participants": participants,
-        "mentions": mentions,
-        "channels": channels,
+        "participants": list(participants_map.values()),
+        "mentions": [{"username": u} for u in sorted(list(mentions_set))],
+        "channels": list(channels_map.values()),
     }

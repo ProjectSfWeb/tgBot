@@ -178,14 +178,24 @@ def parse_telegram_export_streams(files: List[InMemoryFile]) -> Dict[str, Any]:
     for f in files:
         name = (f.name or "").lower()
         if name.endswith(".json"):
-            text = _decode_bytes_auto(f.data)
+            text = f.data.decode("utf-8")
             j = _parse_json_text(text)
             msgs = []
             for m in j.get("messages", []):
-                author_name = m.get("from")
-                author_username = m.get("from_username") or m.get("author_username")
-                is_channel = m.get("type") == "channel" or m.get("from_id", "").startswith("channel")
-                from_obj = {"name": author_name, "username": author_username, "is_channel": is_channel}
+                author_name = m.get("from")  # имя автора
+                from_id = m.get("from_id", "")
+
+                # username НЕ существует => берем только None
+                author_username = None
+
+                # канал определяется только так:
+                is_channel = from_id.startswith("channel")
+
+                from_obj = {
+                    "name": author_name,
+                    "username": author_username,
+                    "is_channel": is_channel
+                }
 
                 text_content = ""
                 if isinstance(m.get("text"), str):
@@ -216,7 +226,7 @@ def parse_telegram_export_streams(files: List[InMemoryFile]) -> Dict[str, Any]:
                 msgs.append({"from": from_obj, "text": text_content, "mentions": mentions})
             aggregated["messages"].extend(msgs)
         elif name.endswith(".html"):
-            text = _decode_bytes_auto(f.data)
+            text = f.data.decode("utf-8")
             parsed_html = _parse_html_text(text)
             aggregated["messages"].extend(parsed_html.get("messages", []))
         elif name.endswith(".zip"):
