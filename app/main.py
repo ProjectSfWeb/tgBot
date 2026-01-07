@@ -5,7 +5,7 @@ from datetime import datetime
 
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.filters import Command
-from aiogram.types import Message, FSInputFile, Document
+from aiogram.types import Message, FSInputFile, Document, BufferedInputFile
 from dotenv import load_dotenv
 
 from app.processing.parser import parse_telegram_export_streams
@@ -122,18 +122,32 @@ async def cmd_process(message: Message):
     else:
         # Excel
         try:
+            # Создаём Excel в памяти
             buf = io.BytesIO()
             export_date = datetime.utcnow()
+
             wb = build_excel_workbook(
                 participants=participants,
                 mentions=mentions,
                 channels=channels,
                 export_date=export_date,
             )
+
             wb.save(buf)
             buf.seek(0)
-            input_file = FSInputFile(buf, filename=f"chat_members_{export_date.date()}.xlsx")
-            await message.answer_document(input_file, caption="Excel с участниками, упоминаниями и каналами.")
+
+            # ВАЖНО: BufferedInputFile, а не FSInputFile
+            input_file = BufferedInputFile(
+                buf.getvalue(),
+                filename=f"chat_members_{export_date.date()}.xlsx"
+            )
+
+            # Отправка файла
+            await message.answer_document(
+                document=input_file,
+                caption="Excel с участниками, упоминаниями и каналами."
+            )
+
         except Exception as e:
             await message.answer(f"Ошибка при формировании Excel: {e}")
 
